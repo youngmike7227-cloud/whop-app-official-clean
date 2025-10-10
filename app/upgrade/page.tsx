@@ -1,0 +1,1 @@
+export default function Upgrade(){return (<main style={{maxWidth:720,margin:"40px auto"}}><h1>Upgrade</h1><p>Please purchase the correct plan on Whop to access OddsPulse.</p></main>)}
