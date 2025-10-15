@@ -15,3 +15,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect("/");
   }
 }
+export async function POST(req: Request) {
+  const event = await req.json();
+  return new Response("ok");
+}
