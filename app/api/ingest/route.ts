@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchLatestRawOdds, diffToAlerts } from "../../../../lib/oddsProvider";
+import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
 
 let RING_BUFFER: any[] = [];
 
