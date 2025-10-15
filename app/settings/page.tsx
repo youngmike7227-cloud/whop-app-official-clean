@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 export default function SettingsPage() {
   return (
     <main style={{maxWidth: 720, margin: "40px auto", padding: 16}}>
