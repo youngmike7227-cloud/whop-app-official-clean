@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeCodeForToken, getMembershipStatus } from "@/lib/whop";
+import { exchangeCodeForToken, getMembershipStatus } from "../../../lib/whop";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
