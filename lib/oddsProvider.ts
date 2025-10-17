@@ -22,8 +22,7 @@ export type Alert = {
   ts: number;         // unix ms
 };
 
-// Example provider call. Swap URL/shape to your vendor.
-export async function fetchLatestRawOdds(): export async function fetchLatestRawOdds(): Promise<RawOdds[]> {
+export async function fetchLatestRawOdds(): Promise<RawOdds[]> {
   const key = process.env.ODDS_API_KEY;
   if (!key) throw new Error("missing ODDS_API_KEY");
 
@@ -71,7 +70,6 @@ export async function fetchLatestRawOdds(): export async function fetchLatestRaw
   }
 
   return out;
-}
 }
 
 // Minimal in-memory last snapshot (works on single function invocations)
