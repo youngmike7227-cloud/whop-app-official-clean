@@ -1,36 +1,51 @@
 "use client";
+import { useEffect, useState } from "react";
+
+type Alert = {
+  id: string;
+  league: string;
+  gameId: string;
+  marketType: "ML" | "SPREAD" | "TOTAL";
+  book: string;
+  oldOdds: number;
+  newOdds: number;
+  deltaCents: number;
+  ts: number;
+};
 
 export default function Page() {
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    alert("Calculate hedge…");
-  };
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  useEffect(() => {
+    async function load() {
+      const res = await fetch("/api/alerts", { cache: "no-store" });
+      const data = await res.json();
+      setAlerts(data.alerts || []);
+    }
+
+    // Initial load
+    load();
+    // Refresh every 15 seconds
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <main style={{ maxWidth: 960, margin: "40px auto", padding: 16 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>OddsPulse</h1>
-        <a href="/api/whop/login">Login with Whop</a>
-      </header>
-
-      <section style={{ marginTop: 24 }}>
-        <h2>Latest Alerts</h2>
-        <p>Mock alerts stream (replace with real provider).</p>
+    <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
+      <h2>📈 Latest Alerts</h2>
+      {alerts.length === 0 ? (
+        <p>No alerts yet — waiting for odds updates...</p>
+      ) : (
         <ul>
-          <li>10:12 — NBA LAL @ BOS — Moneyline at BookX moved -120 → -135</li>
-          <li>10:15 — NFL NYJ @ BUF — Total 42.5 → 41.0</li>
+          {alerts.map((a) => (
+            <li key={a.id}>
+              <strong>{new Date(a.ts).toLocaleTimeString()}</strong> — {a.league}{" "}
+              ({a.marketType}) — {a.book}: {a.oldOdds} → {a.newOdds} (
+              {a.deltaCents}¢)
+            </li>
+          ))}
         </ul>
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <h2>Hedge Calculator</h2>
-        <form onSubmit={onSubmit}>
-          <div><label>Original Stake <input type="number" step="0.01" required /></label></div>
-          <div><label>Original Odds (e.g., -110) <input type="text" required /></label></div>
-          <div><label>Current Opposite Odds <input type="text" required /></label></div>
-          <button type="submit">Calculate Hedge</button>
-        </form>
-      </section>
+      )}
     </main>
   );
 }
