@@ -24,8 +24,7 @@ export type Alert = {
 
 // Example provider call. Swap URL/shape to your vendor.
 export async function fetchLatestRawOdds(): Promise<RawOdds[]> {
-  const url = "https://example-odds-api.com/v1/odds?book=pinnacle&sport=nba";
-  const r = await fetch(url, {
+  const url = "https://api.the-odds-api.com/v4/sports/upcoming/odds/?regions=us&markets=h2h&oddsFormat=american&apiKey=4cead2e799465a1403e9a7e65fe7d90c"const r = await fetch(url, {
     headers: { Authorization: `Bearer ${process.env.ODDS_API_KEY}` },
     // Don’t cache: we want the freshest numbers
     cache: "no-store",
