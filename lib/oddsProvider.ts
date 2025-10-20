@@ -22,52 +22,61 @@ export type Alert = {
   ts: number;         // unix ms
 };
 
-export async function fetchLatestRawOdds(): Promise<RawOdds[]> {
+// Accept an optional sport key, e.g. "basketball_nba"
+export async function fetchLatestRawOdds(sport?: string): Promise<RawOdds[]> {
   const key = process.env.ODDS_API_KEY;
   if (!key) throw new Error("missing ODDS_API_KEY");
 
+  // If a sport is provided, hit the sport-specific endpoint.
+  // Otherwise use the "upcoming" endpoint (same as before).
+  const base = sport && sport.trim()
+    ? `https://api.the-odds-api.com/v4/sports/${sport}/odds/`
+    : `https://api.the-odds-api.com/v4/sports/upcoming/odds/`;
+
   const url =
-    `https://api.the-odds-api.com/v4/sports/upcoming/odds/` +
-    `?regions=us&markets=h2h&oddsFormat=american&apiKey=${key}`;
+    `${base}?regions=us&markets=h2h&oddsFormat=american&apiKey=${key}`;
 
   const r = await fetch(url, {
     cache: "no-store",
-    next: { revalidate: 0 }
+    // If you already set `next: { revalidate: 0 }` before, you can keep it:
+    // next: { revalidate: 0 },
   });
 
   if (!r.ok) {
     const text = await r.text();
-    throw new Error(`fetch failed: ${r.status} ${text.slice(0,200)}`);
+    throw new Error(`fetch failed: ${r.status} ${text.slice(0, 200)}`);
   }
 
-  const data = await r.json(); // array of events
-
+  const json = await r.json();
+  // … keep your existing mapping logic returning RawOdds[] …
+  // Example sketch (use your current mapping):
   const out: RawOdds[] = [];
   const now = Date.now();
 
-  for (const ev of data ?? []) {
+  for (const ev of json ?? []) {
     const league = ev.sport_title ?? "Unknown";
     const gameId = ev.id;
-
     for (const bk of ev.bookmakers ?? []) {
-      const book = bk.key; // e.g., "pinnacle"
+      const book = bk.key;
       for (const m of bk.markets ?? []) {
-        if (m.key !== "h2h") continue; // moneyline only
+        if (m.key !== "h2h") continue;
         for (const o of m.outcomes ?? []) {
           out.push({
             id: `${gameId}:${book}:ML:${o.name}`,
-            book,
             league,
             gameId,
             marketType: "ML",
-            side: o.name,          // team name
-            price: Number(o.price),// already American with oddsFormat=american
-            ts: now
+            book,
+            price: Number(o.price),
+            ts: now,
           });
         }
       }
     }
   }
+
+  return out;
+}
 
   return out;
 }
