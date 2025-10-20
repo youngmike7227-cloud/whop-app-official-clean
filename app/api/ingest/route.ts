@@ -2,17 +2,26 @@ import { NextResponse } from "next/server";
 import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
 import { pushAlerts, getAlerts } from "../../../lib/alertsBuffer";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const raw = await fetchLatestRawOdds();
-    const alerts = diffToAlerts(raw, 5); // try 5¢ to see movement faster
- const sport = searchParams.get("sport") || "";        // e.g. "basketball_nba"
+    const { searchParams } = new URL(req.url);
+    const sport = searchParams.get("sport") || ""; // optional filter, e.g. basketball_nba
+    const threshold = Number(searchParams.get("t") ?? 5); // default: 5¢
 
-    const raw = await fetchLatestRawOdds(sport);          // modify provider to accept sport
+    // Fetch odds, optionally by sport
+    const raw = await fetchLatestRawOdds(sport);
     const alerts = diffToAlerts(raw, threshold);
-    // return alerts as you do now...
+
+    return NextResponse.json({
+      ok: true,
+      added: alerts.length,
+      alerts,
+    });
   } catch (e: any) {
     console.error("INGEST_ERROR", e?.message);
-    return NextResponse.json({ ok: false, error: e?.message || "error" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "error" },
+      { status: 500 }
+    );
   }
 }
