@@ -6,14 +6,11 @@ export async function GET() {
   try {
     const raw = await fetchLatestRawOdds();
     const alerts = diffToAlerts(raw, 5); // try 5¢ to see movement faster
-    pushAlerts(alerts);
+ const sport = searchParams.get("sport") || "";        // e.g. "basketball_nba"
 
-    // Return the current buffer so the client can render immediately
-    return NextResponse.json({
-      ok: true,
-      added: alerts.length,
-      alerts: getAlerts(),
-    });
+    const raw = await fetchLatestRawOdds(sport);          // modify provider to accept sport
+    const alerts = diffToAlerts(raw, threshold);
+    // return alerts as you do now...
   } catch (e: any) {
     console.error("INGEST_ERROR", e?.message);
     return NextResponse.json({ ok: false, error: e?.message || "error" }, { status: 500 });
