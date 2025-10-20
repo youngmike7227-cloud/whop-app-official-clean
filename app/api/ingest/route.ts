@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
-import { pushAlerts, getAlerts } from "../../../lib/alertsBuffer";
 
 export async function GET(req: Request) {
   try {
