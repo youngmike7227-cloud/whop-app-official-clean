@@ -1,12 +1,13 @@
 // lib/oddsProvider.ts
-type RawOdds = {
-  id: string;         // market id from provider
-  book: string;       // e.g., "pinnacle"
-  league: string;     // "NBA", "NFL"
-  gameId: string;     // a provider game id
+
+// ---------- Types ----------
+export type RawOdds = {
+  id: string;         // market id you build (gameId:book:ML:side)
+  league: string;     // e.g. NBA, MLB
+  gameId: string;     // provider game id
   marketType: "ML" | "SPREAD" | "TOTAL";
-  side?: string;      // "LAL" / "BOS", etc for ML/SPREAD
-  price: number;      // American odds, e.g., -120
+  book: string;       // e.g. bovada, fanduel
+  price: number;      // american odds, e.g. -120, +150
   ts: number;         // unix ms
 };
 
@@ -18,56 +19,48 @@ export type Alert = {
   book: string;
   oldOdds: number;
   newOdds: number;
-  deltaCents: number; // absolute difference in “cents”
-  ts: number;         // unix ms
+  deltaCents: number;
+  ts: number;
 };
 
-// Accept an optional sport key, e.g. "basketball_nba"
+// ---------- Fetch & map ----------
 export async function fetchLatestRawOdds(sport?: string): Promise<RawOdds[]> {
   const key = process.env.ODDS_API_KEY;
   if (!key) throw new Error("missing ODDS_API_KEY");
 
-  // If a sport is provided, hit the sport-specific endpoint.
-  // Otherwise use the "upcoming" endpoint (same as before).
   const base = sport && sport.trim()
     ? `https://api.the-odds-api.com/v4/sports/${sport}/odds/`
     : `https://api.the-odds-api.com/v4/sports/upcoming/odds/`;
 
-  const url =
-    `${base}?regions=us&markets=h2h&oddsFormat=american&apiKey=${key}`;
+  const url = `${base}?regions=us&markets=h2h&oddsFormat=american&apiKey=${key}`;
 
-  const r = await fetch(url, {
-    cache: "no-store",
-    // If you already set `next: { revalidate: 0 }` before, you can keep it:
-    // next: { revalidate: 0 },
-  });
-
+  const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) {
     const text = await r.text();
     throw new Error(`fetch failed: ${r.status} ${text.slice(0, 200)}`);
   }
 
   const json = await r.json();
-  // … keep your existing mapping logic returning RawOdds[] …
-  // Example sketch (use your current mapping):
   const out: RawOdds[] = [];
   const now = Date.now();
 
+  // Map provider shape -> RawOdds[]
   for (const ev of json ?? []) {
-    const league = ev.sport_title ?? "Unknown";
-    const gameId = ev.id;
-    for (const bk of ev.bookmakers ?? []) {
-      const book = bk.key;
-      for (const m of bk.markets ?? []) {
-        if (m.key !== "h2h") continue;
-        for (const o of m.outcomes ?? []) {
+    const league: string = ev?.sport_title ?? "Unknown";
+    const gameId: string = ev?.id;
+    for (const bk of ev?.bookmakers ?? []) {
+      const book: string = bk?.key;
+      for (const m of bk?.markets ?? []) {
+        // moneyline only for now
+        if (m?.key !== "h2h") continue;
+        for (const o of m?.outcomes ?? []) {
           out.push({
-            id: `${gameId}:${book}:ML:${o.name}`,
+            id: `${gameId}:${book}:ML:${o?.name}`,
             league,
             gameId,
             marketType: "ML",
             book,
-            price: Number(o.price),
+            price: Number(o?.price),
             ts: now,
           });
         }
@@ -75,19 +68,21 @@ export async function fetchLatestRawOdds(sport?: string): Promise<RawOdds[]> {
     }
   }
 
-  return out;
+  return out; // <— exactly one return and then close the function
 }
 
-  return out;
-}
-
-// Minimal in-memory last snapshot (works on single function invocations)
+// ---------- Diff to alerts (in-memory snapshot) ----------
 let LAST: Map<string, number> = new Map();
 
+/**
+ * Compares the latest RawOdds vs the last snapshot to produce Alerts.
+ * @param raw list of latest quotes
+ * @param thresholdCents absolute difference in "cents" to trigger (e.g., 5)
+ */
 export function diffToAlerts(raw: RawOdds[], thresholdCents = 10): Alert[] {
   const alerts: Alert[] = [];
   for (const o of raw) {
-    const key = `${o.book}:${o.marketType}:${o.gameId}:${o.side || ""}`;
+    const key = `${o.book}:${o.marketType}:${o.gameId}|${o.id}`;
     const prev = LAST.get(key);
     if (typeof prev === "number") {
       const deltaCents = Math.abs(toCents(o.price) - toCents(prev));
@@ -110,8 +105,7 @@ export function diffToAlerts(raw: RawOdds[], thresholdCents = 10): Alert[] {
   return alerts;
 }
 
+// Convert American odds to a simple absolute “cents” value for diffs
 function toCents(american: number): number {
-  // convert American odds to “cents” scale for diffs (simple absolute change)
-  // e.g., -120 → 120, +150 → 150
   return Math.abs(american);
 }
