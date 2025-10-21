@@ -1,22 +1,26 @@
 // lib/db.ts
-import { sql } from '@vercel/postgres';
-export { sql };
+import { sql } from '@vercel/postgres'
 
+export { sql }
+
+// Optional helper: create the alerts table if it doesn’t exist
 export async function ensureAlertsTable() {
-  await sql/* sql */`
-  CREATE TABLE IF NOT EXISTS alerts (
-    id           TEXT PRIMARY KEY,
-    ts           TIMESTAMP NOT NULL,
-    sport        TEXT,
-    league       TEXT,
-    game_id      TEXT,
-    market       TEXT,
-    side         TEXT,
-    book         TEXT,
-    old_odds     INT,
-    new_odds     INT,
-    delta_cents  INT
-  );
-  CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts(ts DESC);
-  `;
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS alerts (
+        id SERIAL PRIMARY KEY,
+        league TEXT,
+        gameId TEXT,
+        marketType TEXT,
+        book TEXT,
+        oldOdds FLOAT,
+        newOdds FLOAT,
+        deltaCents FLOAT,
+        ts TIMESTAMP DEFAULT NOW()
+      );
+    `
+    console.log("✅ alerts table ensured")
+  } catch (err) {
+    console.error("❌ failed to ensure alerts table", err)
+  }
 }
