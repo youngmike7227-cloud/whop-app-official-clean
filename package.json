@@ -1,31 +1,23 @@
 {
   "name": "odds-pulse-starter",
   "private": true,
-  "version": "0.1.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "next": "^14.2.33",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "next": "14.x",
+    "react": "18.x",
+    "react-dom": "18.x",
+    "@vercel/postgres": "^0.8.0"
   },
-  "type": "module",
   "devDependencies": {
-    "@types/node": "24.6.2",
-    "@types/react": "19.2.0",
-    "typescript": "5.9.3"
+    "typescript": "^5.4.0",
+    "@types/react": "^18.2.0",
+    "@types/node": "^20.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.x"
   }
 }
-# ⬇️ go to your project folder (change the path if needed)
-cd ~/Desktop/odds-pulse-starter   # or wherever your repo lives
-
-# ⬇️ install the Postgres client
-npm i @vercel/postgres
-
-# ⬇️ commit & push so Vercel sees the new dependency
-git add package.json package-lock.json
-git commit -m "chore: add @vercel/postgres"
-git push
