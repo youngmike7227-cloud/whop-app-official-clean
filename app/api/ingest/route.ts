@@ -21,6 +21,19 @@ export async function GET(req: Request) {
     return NextResponse.json(
       { ok: false, error: e?.message || "error" },
       { status: 500 }
+      // after: const r = await fetch(url, { cache: "no-store" });
+const remaining = r.headers.get("x-requests-remaining") ?? undefined;
+const used = r.headers.get("x-requests-used") ?? undefined;
+
+// ... existing mapping to `alerts`
+
+return NextResponse.json({
+  ok: true,
+  added: alerts.length,
+  alerts,
+  remaining,
+  used,
+});
     );
   }
 }
