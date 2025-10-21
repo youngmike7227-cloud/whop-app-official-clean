@@ -19,3 +19,13 @@
     "typescript": "5.9.3"
   }
 }
+# ⬇️ go to your project folder (change the path if needed)
+cd ~/Desktop/odds-pulse-starter   # or wherever your repo lives
+
+# ⬇️ install the Postgres client
+npm i @vercel/postgres
+
+# ⬇️ commit & push so Vercel sees the new dependency
+git add package.json package-lock.json
+git commit -m "chore: add @vercel/postgres"
+git push
