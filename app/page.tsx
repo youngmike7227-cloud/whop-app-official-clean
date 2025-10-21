@@ -32,7 +32,9 @@ export default function Home() {
       setError(e?.message || "request failed");
     }
   }
-
+const [sport, setSport] = useState("basketball_nba"); // default
+const [threshold, setThreshold] = useState(5);        // default (cents)
+const [remaining, setRemaining] = useState<string | undefined>();
   useEffect(() => {
     // first load
     load();
