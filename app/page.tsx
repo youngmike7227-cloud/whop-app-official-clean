@@ -21,16 +21,22 @@ export default function Home() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   async function load() {
-    try {
-      setError(null);
-      const res = await fetch("/api/ingest", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || "ingest failed");
-      setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
-      setLastUpdated(Date.now());
-    } catch (e: any) {
-      setError(e?.message || "request failed");
-    }
+  try {
+    setError(null);
+    const res = await fetch(`/api/ingest?sport=${sport}&t=${threshold}`, { cache: "no-store" });
+    const data = await res.json();
+
+    if (!res.ok || data?.ok === false) throw new Error(data?.error || "ingest failed");
+
+    setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
+    setRemaining(data.remaining);        // <- may be undefined; that's fine
+    setLastUpdated(Date.now());
+    return true;                         // tell poller this was successful
+  } catch (e: any) {
+    setError(e?.message || "request failed");
+    return false;                        // tell poller to back off
+  }
+}
   }
 const [sport, setSport] = useState("basketball_nba"); // default
 const [threshold, setThreshold] = useState(5);        // default (cents)
