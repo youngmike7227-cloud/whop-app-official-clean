@@ -1,7 +1,8 @@
 // app/api/ingest/route.ts
 import { NextResponse } from "next/server";
-import { ensureAlertsTable, sql } from "@/lib/db";
-import { fetchLatestRawOdds, diffToAlerts } from "@/lib/oddsProvider"; // you already have these
+import { ensureAlertsTable, sql } from "../../../lib/db";
+import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
+
 
 export const revalidate = 0;        // never cache
 export const dynamic = "force-dynamic";
