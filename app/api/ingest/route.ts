@@ -1,50 +1,40 @@
 // app/api/ingest/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
+import { NextResponse } from "next/server";
+import { ensureAlertsTable, sql } from "@/lib/db";
+import { fetchLatestRawOdds, diffToAlerts } from "@/lib/oddsProvider"; // you already have these
 
+export const revalidate = 0;        // never cache
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const sport = searchParams.get("sport") || undefined;  // e.g. "basketball_nba"
-    const tRaw = searchParams.get("t");
-    const threshold = tRaw ? Math.max(1, Number(tRaw)) : 5;
+    // ensure table exists first time it runs
+    await ensureAlertsTable();
 
-    // 1) Fetch raw odds (sport optional)
+    const { searchParams } = new URL(req.url);
+    const threshold = Number(searchParams.get("threshold") ?? 80); // small for testing
+    const sport = searchParams.get("sport") ?? "";                 // optional
+
+    // 1) fetch raw odds (optionally filtered by sport)
     const raw = await fetchLatestRawOdds(sport);
 
-    // 2) Compute alerts
+    // 2) compute alerts (diffs)
     const alerts = diffToAlerts(raw, threshold);
 
-    // 3) If you also fetch directly from The Odds API here (some versions do),
-    //    AND you still have the Response `r`, read headers *right after* that fetch.
-    //    Otherwise, skip this. (Keeping as optional)
-    let remaining: string | undefined;
-    let used: string | undefined;
+    // 3) write alerts to DB (only if any)
+    if (alerts.length > 0) {
+      // You can batch insert; simplest loop is fine for now
+      for (const a of alerts) {
+        await sql`
+          INSERT INTO alerts (league, gameId, marketType, book, oldOdds, newOdds, deltaCents, ts)
+          VALUES (${a.league}, ${a.gameId}, ${a.marketType}, ${a.book}, ${a.oldOdds}, ${a.newOdds}, ${a.deltaCents}, to_timestamp(${Math.floor(a.ts/1000)}))
+        `;
+      }
+    }
 
-    // If you do have a direct Response `r` from fetch to the-odds-api, it would be:
-    // const r = await fetch(url, { cache: "no-store" });
-    // remaining = r.headers.get("x-requests-remaining") ?? undefined;
-    // used = r.headers.get("x-requests-used") ?? undefined;
-
-    // In our current setup, we don't have `r` here because fetch happens inside the provider.
-    // So we just return alerts; remaining/used will be undefined (that's OK).
-
-    return NextResponse.json({
-      ok: true,
-      added: alerts.length,
-      alerts,
-      remaining,
-      used,
-    });
+    return NextResponse.json({ ok: true, added: alerts.length, alerts });
   } catch (e: any) {
-    // keep this return *as-is*, and don't place any `const` after it
-    return NextResponse.json(
-      { ok: false, error: e?.message || "error" },
-      { status: 500 },
-    );
+    console.error("INGEST_ERROR", e);
+    return NextResponse.json({ ok: false, error: e?.message ?? "ingest failed" }, { status: 500 });
   }
 }
