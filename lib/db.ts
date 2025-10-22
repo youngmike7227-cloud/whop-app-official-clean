@@ -41,19 +41,21 @@ export async function ensureLastPricesTable() {
   }
 }
 
-/** Get previous prices for keys we care about */
+
 export async function fetchPrevPrices(keys: string[]) {
   if (keys.length === 0) return new Map<string, number>();
+
+  // Use sql.array(..., 'text') so the ANY() binding has the right type
   const { rows } = await sql`
     SELECT market_id, price
     FROM last_prices
-    WHERE market_id = ANY(${keys})
+    WHERE market_id = ANY(${sql.array(keys, 'text')})
   `;
+
   const map = new Map<string, number>();
   for (const r of rows) map.set(r.market_id as string, Number(r.price));
   return map;
 }
-
 /** Upsert the latest prices after each run */
 export async function upsertPrices(
   pairs: { id: string; price: number; ts: number }[]
