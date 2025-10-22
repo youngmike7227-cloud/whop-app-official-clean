@@ -1,9 +1,9 @@
+
 // lib/db.ts
-import { sql } from '@vercel/postgres'
+import { sql } from '@vercel/postgres';
+export { sql };
 
-export { sql }
-
-// Optional helper: create the alerts table if it doesn’t exist
+/** Ensure the alerts table (you already have this) */
 export async function ensureAlertsTable() {
   try {
     await sql`
@@ -18,9 +18,52 @@ export async function ensureAlertsTable() {
         deltaCents FLOAT,
         ts TIMESTAMP DEFAULT NOW()
       );
-    `
-    console.log("✅ alerts table ensured")
+    `;
+    console.log("✅ alerts table ensured");
   } catch (err) {
-    console.error("❌ failed to ensure alerts table", err)
+    console.error("❌ failed to ensure alerts table", err);
+  }
+}
+
+/** NEW: Ensure persistent snapshot of last prices */
+export async function ensureLastPricesTable() {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS last_prices (
+        market_id TEXT PRIMARY KEY,    -- e.g. gameId:book:ML:side
+        price FLOAT NOT NULL,
+        ts TIMESTAMP DEFAULT NOW()
+      );
+    `;
+    console.log("✅ last_prices table ensured");
+  } catch (err) {
+    console.error("❌ failed to ensure last_prices table", err);
+  }
+}
+
+/** Get previous prices for keys we care about */
+export async function fetchPrevPrices(keys: string[]) {
+  if (keys.length === 0) return new Map<string, number>();
+  const { rows } = await sql`
+    SELECT market_id, price
+    FROM last_prices
+    WHERE market_id = ANY(${keys})
+  `;
+  const map = new Map<string, number>();
+  for (const r of rows) map.set(r.market_id as string, Number(r.price));
+  return map;
+}
+
+/** Upsert the latest prices after each run */
+export async function upsertPrices(
+  pairs: { id: string; price: number; ts: number }[]
+) {
+  for (const p of pairs) {
+    await sql`
+      INSERT INTO last_prices (market_id, price, ts)
+      VALUES (${p.id}, ${p.price}, to_timestamp(${p.ts} / 1000.0))
+      ON CONFLICT (market_id)
+      DO UPDATE SET price = EXCLUDED.price, ts = EXCLUDED.ts
+    `;
   }
 }
