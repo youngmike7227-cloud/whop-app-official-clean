@@ -1,4 +1,3 @@
-
 // lib/db.ts
 import { sql } from '@vercel/postgres';
 export { sql };
@@ -25,12 +24,12 @@ export async function ensureAlertsTable() {
   }
 }
 
-/** NEW: Ensure persistent snapshot of last prices */
+/** Ensure persistent snapshot of last prices */
 export async function ensureLastPricesTable() {
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS last_prices (
-        market_id TEXT PRIMARY KEY,    -- e.g. gameId:book:ML:side
+        market_id TEXT PRIMARY KEY,  -- e.g. gameId:book:ML:side
         price FLOAT NOT NULL,
         ts TIMESTAMP DEFAULT NOW()
       );
@@ -41,11 +40,11 @@ export async function ensureLastPricesTable() {
   }
 }
 
-
+/** Fetch previously stored prices */
 export async function fetchPrevPrices(keys: string[]) {
   if (keys.length === 0) return new Map<string, number>();
 
-  // Use sql.array(..., 'text') so the ANY() binding has the right type
+  // Use sql.array(..., 'text') so ANY() binding works properly
   const { rows } = await sql`
     SELECT market_id, price
     FROM last_prices
@@ -56,10 +55,13 @@ export async function fetchPrevPrices(keys: string[]) {
   for (const r of rows) map.set(r.market_id as string, Number(r.price));
   return map;
 }
-/** Upsert the latest prices after each run */
+
+/** Upsert (insert/update) the latest prices after each run */
 export async function upsertPrices(
   pairs: { id: string; price: number; ts: number }[]
 ) {
+  if (!pairs.length) return;
+
   for (const p of pairs) {
     await sql`
       INSERT INTO last_prices (market_id, price, ts)
