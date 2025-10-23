@@ -39,22 +39,34 @@ export async function ensureLastPricesTable() {
     console.error("❌ failed to ensure last_prices table", err);
   }
 }
-export async function fetchPrevPrices(keys: string[]) {
-  if (keys.length === 0) return new Map<string, number>();
+import { sql } from '@vercel/postgres';
 
-  // Build a parameterized list of values: ('a', 'b', 'c')
-  const list = keys.map(k => sql`${k}`);
+// ...
+
+export async function fetchPrevPrices(keys: string[]) {
+  // nothing to fetch
+  if (!keys || keys.length === 0) return new Map<string, number>();
+
+  // Build a parameterized list: ${inList} becomes "$1, $2, $3..."
+  const frags = keys.map(k => sql`${k}`);
+
+  // Compose a single SQL fragment "a, b, c" from the fragments
+  let inList = frags[0];
+  for (let i = 1; i < frags.length; i++) {
+    inList = sql`${inList}, ${frags[i]}`;
+  }
 
   const { rows } = await sql`
     SELECT market_id, price
     FROM last_prices
-    WHERE market_id IN (${sql.join(list, sql`, `)})
+    WHERE market_id IN (${inList})
   `;
 
   const map = new Map<string, number>();
   for (const r of rows) map.set(r.market_id as string, Number(r.price));
   return map;
 }
+
 /** Upsert (insert/update) the latest prices after each run */
 export async function upsertPrices(
   pairs: { id: string; price: number; ts: number }[]
