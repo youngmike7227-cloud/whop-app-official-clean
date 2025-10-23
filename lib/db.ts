@@ -39,24 +39,16 @@ export async function ensureLastPricesTable() {
     console.error("❌ failed to ensure last_prices table", err);
   }
 }
-
 export async function fetchPrevPrices(keys: string[]) {
-  // nothing to fetch
   if (!keys || keys.length === 0) return new Map<string, number>();
 
-  // Build a parameterized list: ${inList} becomes "$1, $2, $3..."
-  const frags = keys.map(k => sql`${k}`);
-
-  // Compose a single SQL fragment "a, b, c" from the fragments
-  let inList = frags[0];
-  for (let i = 1; i < frags.length; i++) {
-    inList = sql`${inList}, ${frags[i]}`;
-  }
+  // Build one CSV string and let Postgres turn it into text[]
+  const csv = keys.join(',');
 
   const { rows } = await sql`
     SELECT market_id, price
     FROM last_prices
-    WHERE market_id IN (${inList})
+    WHERE market_id = ANY(string_to_array(${csv}, ','))
   `;
 
   const map = new Map<string, number>();
