@@ -39,23 +39,22 @@ export async function ensureLastPricesTable() {
     console.error("❌ failed to ensure last_prices table", err);
   }
 }
-
-/** Fetch previously stored prices */
 export async function fetchPrevPrices(keys: string[]) {
   if (keys.length === 0) return new Map<string, number>();
 
-  // Use sql.array(..., 'text') so ANY() binding works properly
+  // Build a parameterized list of values: ('a', 'b', 'c')
+  const list = keys.map(k => sql`${k}`);
+
   const { rows } = await sql`
     SELECT market_id, price
     FROM last_prices
-    WHERE market_id = ANY(${sql.array(keys, 'text')})
+    WHERE market_id IN (${sql.join(list, sql`, `)})
   `;
 
   const map = new Map<string, number>();
   for (const r of rows) map.set(r.market_id as string, Number(r.price));
   return map;
 }
-
 /** Upsert (insert/update) the latest prices after each run */
 export async function upsertPrices(
   pairs: { id: string; price: number; ts: number }[]
