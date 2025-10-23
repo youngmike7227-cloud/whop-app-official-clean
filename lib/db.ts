@@ -39,9 +39,6 @@ export async function ensureLastPricesTable() {
     console.error("❌ failed to ensure last_prices table", err);
   }
 }
-import { sql } from '@vercel/postgres';
-
-// ...
 
 export async function fetchPrevPrices(keys: string[]) {
   // nothing to fetch
