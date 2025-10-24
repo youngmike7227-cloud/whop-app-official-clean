@@ -3,39 +3,68 @@ import { NextResponse } from "next/server";
 import { ensureAlertsTable, sql } from "../../../lib/db";
 import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
 
-
-export const revalidate = 0;        // never cache
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export async function GET(req: Request) {
   try {
-    // ensure table exists first time it runs
-    await ensureAlertsTable();
+    // Extract optional query parameters
+    const url = new URL(req.url);
+    const sport = url.searchParams.get("sport") || "NBA"; // default: NBA
+    const thresholdParam = url.searchParams.get("threshold");
+    const THRESHOLD_CENTS = thresholdParam ? Number(thresholdParam) : 10; // default: 10
 
-    const { searchParams } = new URL(req.url);
-    const threshold = Number(searchParams.get("threshold") ?? 80); // small for testing
-    const sport = searchParams.get("sport") ?? "";                 // optional
+    // 1) Ensure DB table exists
+    await ensureLastPricesTable();
 
-    // 1) fetch raw odds (optionally filtered by sport)
-    const raw = await fetchLatestRawOdds(sport);
+    // 2) Fetch odds for selected sport
+    const raw = await fetchLatestRawOdds(sport); // provider supports league argument
+    const now = Date.now();
+    const keys = raw.map(r => r.id);
 
-    // 2) compute alerts (diffs)
-    const alerts = diffToAlerts(raw, threshold);
+    // 3) Get previous prices
+    const prevMap = await fetchPrevPrices(keys);
 
-    // 3) write alerts to DB (only if any)
-    if (alerts.length > 0) {
-      // You can batch insert; simplest loop is fine for now
-      for (const a of alerts) {
-        await sql`
-          INSERT INTO alerts (league, gameId, marketType, book, oldOdds, newOdds, deltaCents, ts)
-          VALUES (${a.league}, ${a.gameId}, ${a.marketType}, ${a.book}, ${a.oldOdds}, ${a.newOdds}, ${a.deltaCents}, to_timestamp(${Math.floor(a.ts/1000)}))
-        `;
+    // 4) Detect alerts
+    const alerts: any[] = [];
+    const pairs = raw.map(r => ({ id: r.id, price: Number(r.price), ts: now }));
+
+    for (const r of raw) {
+      const prev = prevMap.get(r.id);
+      if (typeof prev === "number") {
+        const deltaCents = Math.abs(Number(r.price) - prev);
+        if (deltaCents >= THRESHOLD_CENTS) {
+          alerts.push({
+            id: r.id,
+            league: r.league,
+            gameId: r.gameId,
+            marketType: r.marketType,
+            book: r.book,
+            oldOdds: prev,
+            newOdds: Number(r.price),
+            deltaCents,
+            ts: now,
+          });
+        }
       }
     }
 
-    return NextResponse.json({ ok: true, added: alerts.length, alerts });
-  } catch (e: any) {
-    console.error("INGEST_ERROR", e);
-    return NextResponse.json({ ok: false, error: e?.message ?? "ingest failed" }, { status: 500 });
+    // 5) Save latest odds snapshot
+    await upsertPrices(pairs);
+
+    return NextResponse.json({
+      ok: true,
+      sport,
+      threshold: THRESHOLD_CENTS,
+      added: alerts.length,
+      alerts,
+    });
+  } catch (err: any) {
+    console.error("INGEST_ERROR:", err?.message || err);
+    return NextResponse.json(
+      { ok: false, error: err?.message || "ingest failed" },
+      { status: 500 }
+    );
   }
 }
