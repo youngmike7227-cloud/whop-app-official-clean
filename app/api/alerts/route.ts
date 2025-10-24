@@ -1,41 +1,28 @@
-// app/api/alerts/recent/route.ts
+// app/api/alerts/route.ts
 import { NextResponse } from "next/server";
-import { sql } from ../../../lib/alertsBuffer";
+import { sql } from "@../../../db";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-export async function GET(req: Request) {
+/**
+ * Simple endpoint to fetch all alerts from `alerts` table
+ * (used mainly for debugging / internal testing)
+ */
+export async function GET() {
   try {
-    const url = new URL(req.url);
-    const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") ?? 200)));
-    const league = url.searchParams.get("league") || "";
-    const book = url.searchParams.get("book") || "";
-
-    // Build simple WHERE without relying on sql.join typings
-    let where = sql``;
-    if (league && book) {
-      where = sql`WHERE league = ${league} AND book = ${book}`;
-    } else if (league) {
-      where = sql`WHERE league = ${league}`;
-    } else if (book) {
-      where = sql`WHERE book = ${book}`;
-    }
-
     const { rows } = await sql`
-      SELECT market_id, league, game_id, market_type, book,
-             old_odds, new_odds, delta_cents, ts
-      FROM alerts_log
-      ${where}
+      SELECT id, league, gameId, marketType, book, oldOdds, newOdds, deltaCents, ts
+      FROM alerts
       ORDER BY ts DESC
-      LIMIT ${limit}
+      LIMIT 200
     `;
-
     return NextResponse.json({ ok: true, alerts: rows });
   } catch (err: any) {
-    console.error("RECENT_ALERTS_ERROR:", err?.message || err);
+    console.error("ALERTS_ROUTE_ERROR:", err?.message || err);
     return NextResponse.json(
-      { ok: false, error: err?.message || "recent failed" },
+      { ok: false, error: err?.message || "failed to fetch alerts" },
       { status: 500 }
     );
   }
