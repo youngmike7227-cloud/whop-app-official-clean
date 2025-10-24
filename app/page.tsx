@@ -1,6 +1,5 @@
 "use client";
-
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Alert = {
   id: string;
@@ -15,94 +14,52 @@ type Alert = {
 };
 
 export default function Home() {
-  // --- state ---
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setPaused] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // new controls
-  const [sport, setSport] = useState("basketball_nba");
-  const [threshold, setThreshold] = useState(5);
-  const [remaining, setRemaining] = useState<string | undefined>();
-
-  // --- fetch one tick ---
   async function load() {
     try {
       setError(null);
-      const res = await fetch(`/api/ingest?sport=${sport}&t=${threshold}`, {
-        cache: "no-store",
-      });
+      // hit ingest endpoint (live run)
+      const res = await fetch(`/api/ingest?sport=basketball_nba&threshold=15`, { cache: "no-store" });
       const data = await res.json();
-
-      if (!res.ok || data?.ok === false) {
-        throw new Error(data?.error || "ingest failed");
-      }
-
+      if (!res.ok || data.ok === false) throw new Error(data?.error || "ingest failed");
       setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
-      setRemaining(data.remaining);
       setLastUpdated(Date.now());
-      return true; // success for backoff
     } catch (e: any) {
       setError(e?.message || "request failed");
-      return false; // failure for backoff
     }
   }
 
-  // --- CSV export (inside the component) ---
-  function exportCsv(rows: Alert[]) {
-    const header = [
-      "time",
-      "league",
-      "book",
-      "market",
-      "game",
-      "old",
-      "new",
-      "delta",
-    ].join(",");
-    const body = rows
-      .map((a) =>
-        [
-          new Date(a.ts).toISOString(),
-          a.league,
-          a.book,
-          a.marketType,
-          a.gameId,
-          a.oldOdds,
-          a.newOdds,
-          a.deltaCents,
-        ].join(",")
-      )
-      .join("\n");
-    const blob = new Blob([header + "\n" + body], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "alerts.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  async function loadRecent() {
+    try {
+      setError(null);
+      const res = await fetch(`/api/alerts/recent?limit=200`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data?.error || "recent failed");
+      setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
+      setLastUpdated(Date.now());
+    } catch (e: any) {
+      setError(e?.message || "request failed");
+    }
   }
 
-  // --- polling with backoff ---
   useEffect(() => {
-    if (isPaused) return;
-    let delay = 15000;
-    let t: any;
-
-    const tick = async () => {
-      const ok = await load();
-      delay = ok ? 15000 : Math.min(delay * 2, 60000);
-      t = setTimeout(tick, delay);
+    // initial load -> get recent from DB so page is not empty
+    loadRecent();
+    // polling live every 15s unless paused
+    timerRef.current = setInterval(() => {
+      if (!isPaused) load();
+    }, 15000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
     };
+  }, [isPaused]);
 
-    tick();
-    return () => clearTimeout(t);
-  }, [sport, threshold, isPaused]);
-
-  // --- group by league for display (MUST stay inside component) ---
+  // Optional group by league for display
   const grouped = useMemo(() => {
     const map = new Map<string, Alert[]>();
     for (const a of alerts) {
@@ -113,60 +70,22 @@ export default function Home() {
     return Array.from(map.entries());
   }, [alerts]);
 
-  // --- UI ---
   return (
     <main style={{ maxWidth: 960, margin: "40px auto", padding: 16 }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>OddsPulse — Live Alerts</h1>
+        <h1>OddsPulse — Live & Recent Alerts</h1>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          {lastUpdated && (
-            <small>
-              Last update: {new Date(lastUpdated).toLocaleTimeString()}
-            </small>
-          )}
-          <button onClick={() => setPaused((p) => !p)}>
-            {isPaused ? "Resume" : "Pause"}
-          </button>
+          {lastUpdated && <small>Last update: {new Date(lastUpdated).toLocaleTimeString()}</small>}
+          <button onClick={() => setPaused(p => !p)}>{isPaused ? "Resume" : "Pause"}</button>
+          <button onClick={load}>Live (Ingest now)</button>
+          <button onClick={loadRecent}>Recent (from DB)</button>
         </div>
       </header>
 
-      {/* controls */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-        <label>
-          Sport:&nbsp;
-          <select value={sport} onChange={(e) => setSport(e.target.value)}>
-            <option value="basketball_nba">NBA</option>
-            <option value="football_nfl">NFL</option>
-            <option value="baseball_mlb">MLB</option>
-            <option value="icehockey_nhl">NHL</option>
-          </select>
-        </label>
-
-        <label>
-          Threshold (¢):&nbsp;
-          <input
-            type="number"
-            min={1}
-            max={50}
-            value={threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-            style={{ width: 72 }}
-          />
-        </label>
-
-        <button onClick={() => exportCsv(alerts)} disabled={!alerts.length}>
-          Export CSV
-        </button>
-
-        <small>Requests remaining: {remaining ?? "?"}</small>
-      </div>
-
-      {error && (
-        <p style={{ color: "crimson" }}>Error: {error}</p>
-      )}
+      {error && <p style={{ color: "crimson" }}>Error: {error}</p>}
 
       {alerts.length === 0 ? (
-        <p>No alerts yet — polling…</p>
+        <p>No alerts yet — try “Live (Ingest now)” or wait for polling.</p>
       ) : (
         grouped.map(([league, list]) => (
           <section key={league} style={{ marginTop: 24 }}>
@@ -184,7 +103,7 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {list.map((a) => (
-                    <tr key={a.id}>
+                    <tr key={a.id + ":" + a.ts}>
                       <td style={{ padding: 8 }}>{new Date(a.ts).toLocaleTimeString()}</td>
                       <td style={{ padding: 8 }}>{a.book}</td>
                       <td style={{ padding: 8 }}>{a.marketType}</td>
