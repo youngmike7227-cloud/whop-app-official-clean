@@ -59,6 +59,7 @@ export async function GET(req: Request) {
 
     // 5) Save latest odds snapshot
     await upsertPrices(pairs);
+ await insertAlertsLog(alerts);
 
     return NextResponse.json({
       ok: true,
