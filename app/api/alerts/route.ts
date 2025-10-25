@@ -1,15 +1,15 @@
 // app/api/alerts/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db"; // ✅ correct alias + quotes
+// use relative path from /app/api/alerts -> /lib/db
+import { sql } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 /**
- * Returns the 200 most recent rows from the `alerts` table.
- * Useful for quick verification / internal use.
  * GET /api/alerts
+ * Returns the 200 most recent alerts from the DB.
  */
 export async function GET() {
   try {
