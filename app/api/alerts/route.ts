@@ -6,39 +6,23 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export async function GET(req: Request) {
-  try {
-    const url = new URL(req.url);
-    const sport = url.searchParams.get("sport");     // e.g. "basketball_nba"
-    const book  = url.searchParams.get("book");      // optional
-    const limit = Number(url.searchParams.get("limit") ?? 200);
+  const url = new URL(req.url);
+  const sport = url.searchParams.get("sport") ?? "";
+  const book  = url.searchParams.get("book") ?? "";
+  const limit = Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") ?? 200)));
 
-    // 1) Build WHERE as a SQL fragment (not a Promise!)
-    const conds: ReturnType<typeof sql>[] = [];
-    if (sport) conds.push(sql`league = ${sport}`);
-    if (book)  conds.push(sql`book = ${book}`);
+  // Build conditions as SQL fragments (do NOT await anything here)
+  const conds: ReturnType<typeof sql>[] = [];
+  if (sport) conds.push(sql`league = ${sport}`);
+  if (book)  conds.push(sql`book = ${book}`);
 
-    const where =
-      conds.length > 0 ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+  const { rows } = await sql`
+    SELECT old_odds, new_odds, delta_cents, ts
+    FROM alerts_log
+    ${conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``}
+    ORDER BY ts DESC
+    LIMIT ${limit}
+  `;
 
-    // 2) Use the fragment inside the main query
-    const { rows } = await sql`
-      SELECT
-        old_odds,
-        new_odds,
-        delta_cents,
-        ts
-      FROM alerts_log
-      ${where}
-      ORDER BY ts DESC
-      LIMIT ${limit}
-    `;
-
-    return NextResponse.json({ ok: true, alerts: rows });
-  } catch (err: any) {
-    console.error("ALERTS_ROUTE_ERROR:", err?.message || err);
-    return NextResponse.json(
-      { ok: false, error: err?.message || "failed to fetch alerts" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ ok: true, alerts: rows });
 }
