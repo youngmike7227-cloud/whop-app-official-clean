@@ -1,5 +1,6 @@
+// app/api/alerts/recent/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "@../../../lib/db"; // your re-export of @vercel/postgres sql
+import { sql } from "@/lib/db"; // re-export of @vercel/postgres `sql`
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,24 +11,24 @@ export async function GET(req: Request) {
 
   const sport = url.searchParams.get("sport") ?? "";
   const book  = url.searchParams.get("book") ?? "";
-  const since = Number(url.searchParams.get("since") ?? 0); // ms epoch, optional
+  const since = Number(url.searchParams.get("since") ?? 0); // ms epoch
   const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") ?? 200)));
 
-  // Build WHERE as SQL fragments (NOT strings, NOT Promises, and no `await` here)
+  // Build WHERE as *fragments* — no `await` anywhere here
   const conds: ReturnType<typeof sql>[] = [];
   if (sport) conds.push(sql`league = ${sport}`);
   if (book)  conds.push(sql`book = ${book}`);
   if (since) conds.push(sql`ts >= to_timestamp(${since} / 1000.0)`);
 
-  // This is a SQL fragment, not a Promise
-  const where: ReturnType<typeof sql> =
-    conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
+  // If no filters, use TRUE so the WHERE is always valid
+  const whereFrag: ReturnType<typeof sql> =
+    conds.length ? sql`${sql.join(conds, sql` AND `)}` : sql`TRUE`;
 
-  // Query using the fragment
+  // Now interpolate the fragment
   const { rows } = await sql`
     SELECT old_odds, new_odds, delta_cents, ts
     FROM alerts_log
-    ${where}
+    WHERE ${whereFrag}
     ORDER BY ts DESC
     LIMIT ${limit}
   `;
