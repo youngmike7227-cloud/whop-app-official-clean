@@ -1,6 +1,7 @@
 // app/api/alerts/recent/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "../../../lib/db"; // adjust if you use the "@/lib/db" alias
+// If you have the alias set up, you can use: import { sql } from "@/lib/db";
+import { sql } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,27 +15,31 @@ export async function GET(req: Request) {
     const gameId   = url.searchParams.get("gameId") || "";
     const market   = url.searchParams.get("marketType") || "";
     const book     = url.searchParams.get("book") || "";
-    const limitRaw = url.searchParams.get("limit") || "50";
-    const limit    = Math.min(Math.max(parseInt(limitRaw, 10) || 50, 1), 200);
+    const limit    = Math.min(
+      Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1),
+      200
+    );
 
-    // --- Build WHERE as a SQL fragment (NO await here) -----------------------
-    const parts: any[] = [];
-    if (league) parts.push(sql`league = ${league}`);
-    if (gameId) parts.push(sql`gameId = ${gameId}`);
-    if (market) parts.push(sql`marketType = ${market}`);
-    if (book)   parts.push(sql`book = ${book}`);
+    // ------------------ BUILD WHERE AS A SQL FRAGMENT (NO await) ------------------
+    let where = sql``;       // starts empty
+    let first = true;        // to decide WHERE vs AND
 
-    let where = sql``;
-    if (parts.length > 0) {
-      // reduce to "p1 AND p2 AND p3 ..."
-      let andChain = parts[0];
-      for (let i = 1; i < parts.length; i++) {
-        andChain = sql`${andChain} AND ${parts[i]}`;
+    const add = (frag: any) => {
+      if (first) {
+        where = sql`WHERE ${frag}`;
+        first = false;
+      } else {
+        where = sql`${where} AND ${frag}`;
       }
-      where = sql`WHERE ${andChain}`;
-    }
-    // ------------------------------------------------------------------------
+    };
 
+    if (league) add(sql`league = ${league}`);
+    if (gameId) add(sql`gameId = ${gameId}`);
+    if (market) add(sql`marketType = ${market}`);
+    if (book)   add(sql`book = ${book}`);
+    // ------------------------------------------------------------------------------
+
+    // Only NOW do we await the query
     const { rows } = await sql<{
       id: string;
       league: string;
@@ -52,9 +57,9 @@ export async function GET(req: Request) {
         gameId,
         marketType,
         book,
-        oldOdds   AS old_odds,
-        newOdds   AS new_odds,
-        deltaCents AS delta_cents,
+        oldOdds     AS old_odds,
+        newOdds     AS new_odds,
+        deltaCents  AS delta_cents,
         ts
       FROM alerts_log
       ${where}
@@ -64,6 +69,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, alerts: rows });
   } catch (err: any) {
+    console.error("ALERTS_RECENT_ERROR:", err);
     return NextResponse.json(
       { ok: false, error: err?.message || "recent alerts failed" },
       { status: 500 }
