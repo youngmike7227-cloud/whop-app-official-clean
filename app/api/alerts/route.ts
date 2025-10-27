@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db"; // your re-export of @vercel/postgres sql
+import { sql } from "@../../../lib/db"; // your re-export of @vercel/postgres sql
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
