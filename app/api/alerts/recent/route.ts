@@ -9,33 +9,53 @@ export const fetchCache = "force-no-store";
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") ?? 200)));
-    const league = url.searchParams.get("league") || "";
-    const book = url.searchParams.get("book") || "";
 
-    let where = sql``;
-    if (league && book) {
-      where = sql`WHERE league = ${league} AND book = ${book}`;
-    } else if (league) {
-      where = sql`WHERE league = ${league}`;
-    } else if (book) {
-      where = sql`WHERE book = ${book}`;
-    }
+    const league = url.searchParams.get("league") ?? "";
+    const gameId = url.searchParams.get("gameId") ?? "";
+    const market = url.searchParams.get("marketType") ?? "";
+    const book   = url.searchParams.get("book") ?? "";
+    const limit  = Math.min(
+      Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1),
+      200
+    );
 
-    const { rows } = await sql`
-      SELECT market_id, league, game_id, market_type, book,
-             old_odds, new_odds, delta_cents, ts
+    // Single query, no SQL fragment composition:
+    const { rows } = await sql<{
+      id: string;
+      league: string;
+      gameid: string;
+      markettype: string;
+      book: string;
+      old_odds: number;
+      new_odds: number;
+      delta_cents: number;
+      ts: Date;
+    }>`
+      SELECT
+        id,
+        league,
+        gameId       AS gameid,
+        marketType   AS markettype,
+        book,
+        oldOdds      AS old_odds,
+        newOdds      AS new_odds,
+        deltaCents   AS delta_cents,
+        ts
       FROM alerts_log
-      ${where}
+      WHERE
+        (${league} = '' OR league = ${league}) AND
+        (${gameId} = '' OR gameId = ${gameId}) AND
+        (${market} = '' OR marketType = ${market}) AND
+        (${book}   = '' OR book = ${book})
       ORDER BY ts DESC
       LIMIT ${limit}
     `;
 
     return NextResponse.json({ ok: true, alerts: rows });
   } catch (err: any) {
-    console.error("RECENT_ALERTS_ERROR:", err?.message || err);
+    console.error("ALERTS_RECENT_ERROR:", err);
     return NextResponse.json(
-      { ok: false, error: err?.message || "recent failed" },
+      { ok: false, error: err?.message || "recent alerts failed" },
       { status: 500 }
     );
   }
