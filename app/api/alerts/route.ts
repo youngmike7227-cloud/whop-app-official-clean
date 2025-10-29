@@ -11,35 +11,29 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const league   = url.searchParams.get("league") || "";
-    const gameId   = url.searchParams.get("gameId") || "";
-    const market   = url.searchParams.get("marketType") || "";
-    const book     = url.searchParams.get("book") || "";
-    const limit    = Math.min(
-      Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1),
-      200
-    );
+    // Optional filters
+    const league       = url.searchParams.get("league") ?? "";
+    const gameId       = url.searchParams.get("gameId") ?? "";
+    const marketType   = url.searchParams.get("marketType") ?? "";
+    const book         = url.searchParams.get("book") ?? "";
+    const minDeltaStr  = url.searchParams.get("minDeltaCents");
+    const sinceMinStr  = url.searchParams.get("sinceMinutes");
+    const limitParam   = url.searchParams.get("limit");
 
-    // ------------------ BUILD WHERE AS A SQL FRAGMENT (NO await) ------------------
-    let where = sql``;       // starts empty
-    let first = true;        // to decide WHERE vs AND
+    const minDeltaCents = Number.isFinite(Number(minDeltaStr))
+      ? Math.max(0, Number(minDeltaStr))
+      : 0;
 
-    const add = (frag: any) => {
-      if (first) {
-        where = sql`WHERE ${frag}`;
-        first = false;
-      } else {
-        where = sql`${where} AND ${frag}`;
-      }
-    };
+    const sinceMinutes = Number.isFinite(Number(sinceMinStr))
+      ? Math.max(0, Number(sinceMinStr))
+      : 0;
 
-    if (league) add(sql`league = ${league}`);
-    if (gameId) add(sql`gameId = ${gameId}`);
-    if (market) add(sql`marketType = ${market}`);
-    if (book)   add(sql`book = ${book}`);
-    // ------------------------------------------------------------------------------
+    // Convert to unix ms and compare with to_timestamp(ms/1000.0)
+    const sinceMs = sinceMinutes > 0 ? Date.now() - sinceMinutes * 60_000 : 0;
 
-    // Only NOW do we await the query
+    const limit = Math.min(Math.max(parseInt(limitParam || "100", 10) || 100, 1), 500);
+
+    // Single parameterized query; no fragment composition.
     const { rows } = await sql<{
       id: string;
       league: string;
@@ -54,24 +48,30 @@ export async function GET(req: Request) {
       SELECT
         id,
         league,
-        gameId,
-        marketType,
+        gameId       AS gameid,
+        marketType   AS markettype,
         book,
-        oldOdds     AS old_odds,
-        newOdds     AS new_odds,
-        deltaCents  AS delta_cents,
+        oldOdds      AS old_odds,
+        newOdds      AS new_odds,
+        deltaCents   AS delta_cents,
         ts
       FROM alerts_log
-      ${where}
+      WHERE
+        (${league} = '' OR league = ${league}) AND
+        (${gameId} = '' OR gameId = ${gameId}) AND
+        (${marketType} = '' OR marketType = ${marketType}) AND
+        (${book} = '' OR book = ${book}) AND
+        (${minDeltaCents} = 0 OR ABS(deltaCents) >= ${minDeltaCents}) AND
+        (${sinceMs} = 0 OR ts >= to_timestamp(${sinceMs} / 1000.0))
       ORDER BY ts DESC
       LIMIT ${limit}
     `;
 
     return NextResponse.json({ ok: true, alerts: rows });
   } catch (err: any) {
-    console.error("ALERTS_RECENT_ERROR:", err);
+    console.error("ALERTS_ERROR:", err);
     return NextResponse.json(
-      { ok: false, error: err?.message || "recent alerts failed" },
+      { ok: false, error: err?.message || "alerts query failed" },
       { status: 500 }
     );
   }
