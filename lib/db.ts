@@ -1,7 +1,13 @@
 // lib/db.ts
 import { sql } from "@vercel/postgres";
 export { sql };
-
+import {
+  ensureLastPricesTable,
+  upsertPrices,
+  // ⬇️ add these
+  ensureAlertsLogTable,
+  insertAlertsLog,
+} from "../../../lib/db"; // or "../../../lib/db"
 /**
  * You likely already had ensureAlertsTable / ensureLastPricesTable / fetchPrevPrices / upsertPrices.
  * This file consolidates those plus NEW: alerts_log persistence.
