@@ -1,14 +1,13 @@
 // app/api/ingest/route.ts
 import { NextResponse } from "next/server";
-import { ensureAlertsTable, sql } from "../../../lib/db";
-import { fetchLatestRawOdds, diffToAlerts } from "../../../lib/oddsProvider";
-
 import {
   ensureLastPricesTable,
   fetchPrevPrices,
   upsertPrices,
-} from "../../../lib/db";
-
+  ensureAlertsLogTable,
+  insertAlertsLog,
+} from "../../../lib/db"; // ← adjust depth if your folder is different
+import { fetchLatestRawOdds } from "../../../lib/oddsProvider";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,26 +15,27 @@ export const fetchCache = "force-no-store";
 
 export async function GET(req: Request) {
   try {
-    // Extract optional query parameters
     const url = new URL(req.url);
-    const sport = url.searchParams.get("sport") || "NBA"; // default: NBA
+    const sport = url.searchParams.get("sport") || "basketball_nba";
     const thresholdParam = url.searchParams.get("threshold");
-    const THRESHOLD_CENTS = thresholdParam ? Number(thresholdParam) : 10; // default: 10
+    const THRESHOLD_CENTS =
+      Number(thresholdParam) > 0 ? Number(thresholdParam) : 10;
 
-    // 1) Ensure DB table exists
     await ensureLastPricesTable();
+    await ensureAlertsLogTable();
 
-    // 2) Fetch odds for selected sport
-    const raw = await fetchLatestRawOdds(sport); // provider supports league argument
+    const raw = await fetchLatestRawOdds(sport);
     const now = Date.now();
-    const keys = raw.map(r => r.id);
+    const keys = raw.map((r) => r.id);
 
-    // 3) Get previous prices
     const prevMap = await fetchPrevPrices(keys);
 
-    // 4) Detect alerts
     const alerts: any[] = [];
-    const pairs = raw.map(r => ({ id: r.id, price: Number(r.price), ts: now }));
+    const pairs = raw.map((r) => ({
+      id: r.id,
+      price: Number(r.price),
+      ts: now,
+    }));
 
     for (const r of raw) {
       const prev = prevMap.get(r.id);
@@ -57,9 +57,8 @@ export async function GET(req: Request) {
       }
     }
 
-    // 5) Save latest odds snapshot
     await upsertPrices(pairs);
- await insertAlertsLog(alerts);
+    await insertAlertsLog(alerts);
 
     return NextResponse.json({
       ok: true,
@@ -69,7 +68,7 @@ export async function GET(req: Request) {
       alerts,
     });
   } catch (err: any) {
-    console.error("INGEST_ERROR:", err?.message || err);
+    console.error("INGEST_ERROR:", err);
     return NextResponse.json(
       { ok: false, error: err?.message || "ingest failed" },
       { status: 500 }
