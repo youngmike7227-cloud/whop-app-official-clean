@@ -1,19 +1,10 @@
 // lib/db.ts
 import { sql } from "@vercel/postgres";
 export { sql };
-import {
-  ensureLastPricesTable,
-  upsertPrices,
-  // ⬇️ add these
-  ensureAlertsLogTable,
-  insertAlertsLog,
-} from "../../../lib/db"; // or "../../../lib/db"
-/**
- * You likely already had ensureAlertsTable / ensureLastPricesTable / fetchPrevPrices / upsertPrices.
- * This file consolidates those plus NEW: alerts_log persistence.
- */
 
-/* -------------------------------- Alerts (UI) table you already had -------------------------------- */
+/**
+ * 1) alerts (UI) table – this is the one your page reads from
+ */
 export async function ensureAlertsTable() {
   try {
     await sql`
@@ -35,12 +26,14 @@ export async function ensureAlertsTable() {
   }
 }
 
-/* ---------------------------- Latest prices snapshot (used for diffs) ---------------------------- */
+/**
+ * 2) last_prices – snapshot table we use for diffing
+ */
 export async function ensureLastPricesTable() {
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS last_prices (
-        market_id TEXT PRIMARY KEY,      -- e.g. gameId:book:ML:side
+        market_id TEXT PRIMARY KEY,  -- e.g. gameId:book:ML:side
         price FLOAT NOT NULL,
         ts TIMESTAMP DEFAULT NOW()
       );
@@ -51,15 +44,22 @@ export async function ensureLastPricesTable() {
   }
 }
 
-// Fetch a map of previous prices by market_id for the provided keys
+/**
+ * 3) get previous prices for a list of market_ids
+ */
 export async function fetchPrevPrices(keys: string[]) {
   if (!keys || keys.length === 0) return new Map<string, number>();
 
-  // Build a safe IN (...) list without relying on sql.join typings
+  // build a safe IN (...) without using sql.join (vercel type issue)
   const frags = [sql`${keys[0]}`];
-  for (let i = 1; i < keys.length; i++) frags.push(sql`, ${keys[i]}`);
+  for (let i = 1; i < keys.length; i++) {
+    frags.push(sql`${keys[i]}`);
+  }
+
   let inList = frags[0];
-  for (let i = 1; i < frags.length; i++) inList = sql`${inList}${frags[i]}`;
+  for (let i = 1; i < frags.length; i++) {
+    inList = sql`${inList}, ${frags[i]}`;
+  }
 
   const { rows } = await sql`
     SELECT market_id, price
@@ -68,11 +68,15 @@ export async function fetchPrevPrices(keys: string[]) {
   `;
 
   const map = new Map<string, number>();
-  for (const r of rows) map.set(r.market_id as string, Number(r.price));
+  for (const r of rows) {
+    map.set(r.market_id as string, Number(r.price));
+  }
   return map;
 }
 
-// Upsert the latest prices for each pair (market_id, price, ts)
+/**
+ * 4) upsert latest prices after each run
+ */
 export async function upsertPrices(
   pairs: { id: string; price: number; ts: number }[]
 ) {
@@ -88,14 +92,18 @@ export async function upsertPrices(
   }
 }
 
-/* -------------------------------- NEW: alerts_log persistence -------------------------------- */
-// 1) Ensure log table
+/* ------------------------------------------------------------------
+   NEW: alerts_log table + bulk insert
+------------------------------------------------------------------ */
+
+/**
+ * create table to store EVERY alert from every ingest run
+ */
 export async function ensureAlertsLogTable() {
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS alerts_log (
         id SERIAL PRIMARY KEY,
-        market_id TEXT NOT NULL,
         league TEXT,
         game_id TEXT,
         market_type TEXT,
@@ -112,26 +120,40 @@ export async function ensureAlertsLogTable() {
   }
 }
 
-// 2) Bulk insert alerts from a run
-export async function insertAlertsLog(alerts: {
-  id: string;
-  league: string;
-  gameId: string;
-  marketType: string;
-  book: string;
-  oldOdds: number;
-  newOdds: number;
-  deltaCents: number;
-  ts: number;
-}[]) {
+/**
+ * bulk insert all alerts from one ingest run
+ */
+export async function insertAlertsLog(
+  alerts: {
+    id: string;
+    league: string;
+    gameId: string;
+    marketType: string;
+    book: string;
+    oldOdds: number;
+    newOdds: number;
+    deltaCents: number;
+    ts: number;
+  }[]
+) {
   if (!alerts || alerts.length === 0) return;
+
   for (const a of alerts) {
     await sql`
       INSERT INTO alerts_log
-        (market_id, league, game_id, market_type, book, old_odds, new_odds, delta_cents, ts)
+        (league, game_id, market_type, book,
+         old_odds, new_odds, delta_cents, ts)
       VALUES
-        (${a.id}, ${a.league}, ${a.gameId}, ${a.marketType}, ${a.book},
-         ${a.oldOdds}, ${a.newOdds}, ${a.deltaCents}, to_timestamp(${a.ts} / 1000.0))
+        (
+          ${a.league},
+          ${a.gameId},
+          ${a.marketType},
+          ${a.book},
+          ${a.oldOdds},
+          ${a.newOdds},
+          ${a.deltaCents},
+          to_timestamp(${a.ts} / 1000.0)
+        );
     `;
   }
 }
