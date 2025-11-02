@@ -2,9 +2,9 @@
 import { sql } from "@vercel/postgres";
 export { sql };
 
-/**
- * 1) alerts (UI) table – this is the one your page reads from
- */
+/* ------------------------------------------------------------
+   1) Alerts (UI) table – you already had this
+-------------------------------------------------------------*/
 export async function ensureAlertsTable() {
   try {
     await sql`
@@ -26,9 +26,9 @@ export async function ensureAlertsTable() {
   }
 }
 
-/**
- * 2) last_prices – snapshot table we use for diffing
- */
+/* ------------------------------------------------------------
+   2) Latest prices snapshot (used for diffs)
+-------------------------------------------------------------*/
 export async function ensureLastPricesTable() {
   try {
     await sql`
@@ -45,38 +45,33 @@ export async function ensureLastPricesTable() {
 }
 
 /**
- * 3) get previous prices for a list of market_ids
+ * Fetch previous prices for a list of market IDs.
+ * (BORING VERSION – 1 query per id, so TS stops yelling 🙃)
  */
 export async function fetchPrevPrices(keys: string[]) {
   if (!keys || keys.length === 0) return new Map<string, number>();
 
-  // build a safe IN (...) without using sql.join (vercel type issue)
-  const frags = [sql`${keys[0]}`];
-  for (let i = 1; i < keys.length; i++) {
-    frags.push(sql`${keys[i]}`);
-  }
-
-  let inList = frags[0];
-  for (let i = 1; i < frags.length; i++) {
-    inList = sql`${inList}, ${frags[i]}`;
-  }
-
-  const { rows } = await sql`
-    SELECT market_id, price
-    FROM last_prices
-    WHERE market_id IN (${inList})
-  `;
-
   const map = new Map<string, number>();
-  for (const r of rows) {
-    map.set(r.market_id as string, Number(r.price));
+
+  for (const id of keys) {
+    const { rows } = await sql`
+      SELECT market_id, price
+      FROM last_prices
+      WHERE market_id = ${id}
+      LIMIT 1
+    `;
+    if (rows.length > 0) {
+      const r = rows[0] as { market_id: string; price: number };
+      map.set(r.market_id, Number(r.price));
+    }
   }
+
   return map;
 }
 
-/**
- * 4) upsert latest prices after each run
- */
+/* ------------------------------------------------------------
+   3) Upsert latest prices after each run
+-------------------------------------------------------------*/
 export async function upsertPrices(
   pairs: { id: string; price: number; ts: number }[]
 ) {
@@ -92,18 +87,15 @@ export async function upsertPrices(
   }
 }
 
-/* ------------------------------------------------------------------
-   NEW: alerts_log table + bulk insert
------------------------------------------------------------------- */
-
-/**
- * create table to store EVERY alert from every ingest run
- */
+/* ------------------------------------------------------------
+   4) alerts_log – persistent history of detected alerts
+-------------------------------------------------------------*/
 export async function ensureAlertsLogTable() {
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS alerts_log (
         id SERIAL PRIMARY KEY,
+        market_id TEXT NOT NULL,
         league TEXT,
         game_id TEXT,
         market_type TEXT,
@@ -121,7 +113,7 @@ export async function ensureAlertsLogTable() {
 }
 
 /**
- * bulk insert all alerts from one ingest run
+ * Bulk insert alerts from a run (what /api/ingest finds)
  */
 export async function insertAlertsLog(
   alerts: {
@@ -140,20 +132,80 @@ export async function insertAlertsLog(
 
   for (const a of alerts) {
     await sql`
-      INSERT INTO alerts_log
-        (league, game_id, market_type, book,
-         old_odds, new_odds, delta_cents, ts)
-      VALUES
-        (
-          ${a.league},
-          ${a.gameId},
-          ${a.marketType},
-          ${a.book},
-          ${a.oldOdds},
-          ${a.newOdds},
-          ${a.deltaCents},
-          to_timestamp(${a.ts} / 1000.0)
-        );
+      INSERT INTO alerts_log (
+        market_id,
+        league,
+        game_id,
+        market_type,
+        book,
+        old_odds,
+        new_odds,
+        delta_cents,
+        ts
+      )
+      VALUES (
+        ${a.id},
+        ${a.league},
+        ${a.gameId},
+        ${a.marketType},
+        ${a.book},
+        ${a.oldOdds},
+        ${a.newOdds},
+        ${a.deltaCents},
+        to_timestamp(${a.ts} / 1000.0)
+      )
     `;
   }
+}
+
+/* ------------------------------------------------------------
+   5) Query recent alerts (used by /api/alerts or /api/alerts/recent)
+-------------------------------------------------------------*/
+export async function getRecentAlerts({
+  limit = 50,
+  league,
+  sinceMinutes,
+}: {
+  limit?: number;
+  league?: string;
+  sinceMinutes?: number;
+}) {
+  // we’ll build the WHERE string manually — simpler than nesting sql`` in sql``
+  const whereParts: string[] = [];
+  const params: any[] = [];
+  let idx = 1;
+
+  if (league) {
+    whereParts.push(`league = $${idx++}`);
+    params.push(league);
+  }
+  if (sinceMinutes) {
+    whereParts.push(`ts >= NOW() - INTERVAL '${sinceMinutes} minutes'`);
+  }
+
+  const whereClause =
+    whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+  // build final SQL with text() so TS doesn’t complain
+  const text = `
+    SELECT
+      market_id,
+      league,
+      game_id,
+      market_type,
+      book,
+      old_odds,
+      new_odds,
+      delta_cents,
+      ts
+    FROM alerts_log
+    ${whereClause}
+    ORDER BY ts DESC
+    LIMIT ${limit}
+  `;
+
+  // @vercel/postgres lets us do this
+  const { rows } = await sql.query(text, params);
+
+  return rows;
 }
