@@ -13,44 +13,51 @@ export async function GET(req: Request) {
     const limitParam = url.searchParams.get("limit");
     const limit = Number(limitParam || "100");
 
-    // read from alerts_log the same way
-    const rows = league
-      ? await sql`
-          SELECT
-            id,
-            league,
-            game_id,
-            market_type,
-            book,
-            old_odds,
-            new_odds,
-            delta_cents,
-            ts
-          FROM alerts_log
-          WHERE league = ${league}
-          ORDER BY ts DESC
-          LIMIT ${limit};
-        `
-      : await sql`
-          SELECT
-            id,
-            league,
-            game_id,
-            market_type,
-            book,
-            old_odds,
-            new_odds,
-            delta_cents,
-            ts
-          FROM alerts_log
-          ORDER BY ts DESC
-          LIMIT ${limit};
-        `;
+    let rows: any[] = [];
 
-    const alerts = rows.map((r: any) => ({
+    if (league) {
+      // 👇 destructure rows
+      const result = await sql`
+        SELECT
+          id,
+          league,
+          game_id,
+          market_type,
+          book,
+          old_odds,
+          new_odds,
+          delta_cents,
+          ts
+        FROM alerts_log
+        WHERE league = ${league}
+        ORDER BY ts DESC
+        LIMIT ${limit};
+      `;
+      rows = result.rows;
+    } else {
+      const result = await sql`
+        SELECT
+          id,
+          league,
+          game_id,
+          market_type,
+          book,
+          old_odds,
+          new_odds,
+          delta_cents,
+          ts
+        FROM alerts_log
+        ORDER BY ts DESC
+        LIMIT ${limit};
+      `;
+      rows = result.rows;
+    }
+
+    // now rows is really an array ✅
+    const alerts = rows.map((r) => ({
       id: r.id,
       league: r.league,
-      gameId: r.game_id,        // JS camelCase
+      gameId: r.game_id,         // camelCase for frontend
       marketType: r.market_type,
       book: r.book,
       oldOdds: r.old_odds,
