@@ -1,6 +1,6 @@
 // app/api/alerts/debug/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "lib/db";
+import { sql } from "../../../lib/db"; // 👈 same style as your ingest route
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,7 +15,6 @@ export async function GET() {
       LIMIT 50;
     `;
 
-    // 👇 VERY important: @vercel/postgres returns { rows: [...] }
     const rows = result.rows;
 
     return NextResponse.json({ ok: true, rows });
