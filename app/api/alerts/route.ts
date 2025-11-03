@@ -1,5 +1,6 @@
+// app/api/alerts/recent/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "../../../lib/db";
+import { sql } from "../../../../lib/db"; // 👈 4 dots up
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,16 +9,11 @@ export const fetchCache = "force-no-store";
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-
-    // optional filters
     const league = url.searchParams.get("league");
-    const limitParam = url.searchParams.get("limit");
-    const limit = Number(limitParam || "100");
+    const limit = Number(url.searchParams.get("limit") || "100");
 
     let result;
-
     if (league) {
-      // filtered by league
       result = await sql`
         SELECT
           id,
@@ -35,7 +31,6 @@ export async function GET(req: Request) {
         LIMIT ${limit};
       `;
     } else {
-      // no filter
       result = await sql`
         SELECT
           id,
@@ -53,13 +48,10 @@ export async function GET(req: Request) {
       `;
     }
 
-    // 🔑 this is what was missing: actually grab the rows array
-    const rows = result.rows;
-
-    const alerts = rows.map((r: any) => ({
+    const alerts = result.rows.map((r: any) => ({
       id: r.id,
       league: r.league,
-      gameId: r.game_id,         // DB: game_id → API: gameId
+      gameId: r.game_id,
       marketType: r.market_type,
       book: r.book,
       oldOdds: r.old_odds,
