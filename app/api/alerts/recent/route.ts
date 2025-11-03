@@ -1,6 +1,6 @@
 // app/api/alerts/recent/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "../../../lib/db"; // 👈 same relative path
+import { sql } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
