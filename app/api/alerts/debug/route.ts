@@ -1,6 +1,6 @@
 // app/api/alerts/debug/route.ts
 import { NextResponse } from "next/server";
-import { sql } from "../../../lib/db"; // 👈 same style as your ingest route
+import { sql } from "../../../../lib/db"; // 👈 4 dots up
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,9 +15,10 @@ export async function GET() {
       LIMIT 50;
     `;
 
-    const rows = result.rows;
-
-    return NextResponse.json({ ok: true, rows });
+    return NextResponse.json({
+      ok: true,
+      rows: result.rows,
+    });
   } catch (err: any) {
     console.error("ALERTS_DEBUG_ERROR:", err);
     return NextResponse.json(
