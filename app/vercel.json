@@ -1,5 +1,8 @@
 {
   "crons": [
-    { "path": "/api/ingest", "schedule": "*/2 * * * *" }
+    { "path": "/api/ingest?sport=basketball_nba", "schedule": "*/5 * * * *" },
+    { "path": "/api/ingest?sport=hockey_nhl",      "schedule": "*/7 * * * *" },
+    { "path": "/api/ingest?sport=americanfootball_nfl", "schedule": "*/10 * * * *" },
+    { "path": "/api/ingest?sport=baseball_mlb",    "schedule": "*/10 * * * *" }
   ]
 }
